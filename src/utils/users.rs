@@ -8,7 +8,7 @@ pub fn get_session_id(ck: &mut Cookies) -> String {
         None => {
             let user_id = phonetic_key::get_random_id();
             let cookie = Cookie::build("session", user_id.clone())
-                .domain(".katb.in")
+                .domain(".dscv.it")
                 .same_site(SameSite::Lax)
                 .secure(true)
                 .permanent()

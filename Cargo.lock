@@ -831,33 +831,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "katbin"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bcrypt",
- "chrono",
- "diesel",
- "diesel_cli",
- "diesel_migrations",
- "dotenv 0.15.0",
- "jirachi",
- "jirachi_cli",
- "jsonwebtoken",
- "regex 1.4.2",
- "rocket",
- "rocket_contrib",
- "rocket_cors",
- "serde",
- "serde_derive",
- "serde_json",
- "slog",
- "slog-async",
- "slog-term",
- "uuid",
-]
-
-[[package]]
 name = "kernel32-sys"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1785,6 +1758,33 @@ name = "traitobject"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "efd1f82c56340fdf16f2a953d7bda4f8fdffba13d93b00844c25572110b26079"
+
+[[package]]
+name = "triton"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bcrypt",
+ "chrono",
+ "diesel",
+ "diesel_cli",
+ "diesel_migrations",
+ "dotenv 0.15.0",
+ "jirachi",
+ "jirachi_cli",
+ "jsonwebtoken",
+ "regex 1.4.2",
+ "rocket",
+ "rocket_contrib",
+ "rocket_cors",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "slog",
+ "slog-async",
+ "slog-term",
+ "uuid",
+]
 
 [[package]]
 name = "typeable"
