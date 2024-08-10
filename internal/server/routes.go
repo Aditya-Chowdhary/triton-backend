@@ -18,6 +18,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.GET("/health", s.healthHandler)
 
+	v1 := r.Group("/v1")
+	v1.POST("/pastebin/create", s.PastebinHandler.CreatePastebin)
+	v1.GET("/pastebin/:url", s.PastebinHandler.GetPastebin)
+
 	return r
 }
 
