@@ -15,12 +15,19 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Use(CORSMiddleware())
 
 	r.GET("/", s.HelloWorldHandler)
-
 	r.GET("/health", s.healthHandler)
 
 	v1 := r.Group("/v1")
 	v1.POST("/pastebin/create", s.PastebinHandler.CreatePastebin)
 	v1.GET("/pastebin/:url", s.PastebinHandler.GetPastebin)
+
+	authGroup := v1.Group("/auth")
+	{
+		authGroup.POST("/register/oauth", s.AuthHandler.RegisterOAuthUser)
+		authGroup.POST("/register/anonymous", s.AuthHandler.RegisterAnonymousUser)
+		authGroup.POST("/get/oauth", s.AuthHandler.GetUserByOAuthID)
+		authGroup.POST("/get/anonymous", s.AuthHandler.GetUserByAnonymousID)
+	}
 
 	return r
 }
@@ -44,6 +51,7 @@ func (s *Server) healthHandler(c *gin.Context) {
 		stats["error"] = fmt.Sprintf("db down: %v", err)
 		log.Fatalf(fmt.Sprintf("db down: %v", err)) // Log the error and terminate the program
 		c.JSON(http.StatusInternalServerError, stats)
+		return
 	}
 
 	// Database is up, add more statistics
