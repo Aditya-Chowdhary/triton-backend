@@ -23,10 +23,29 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	authGroup := v1.Group("/auth")
 	{
+		// OAuth Login
+		authGroup.GET("/login/oauth", s.AuthHandler.GoogleLoginHandler)
+
+		// OAuth Callback
+		authGroup.GET("/callback/oauth", s.AuthHandler.GoogleCallbackHandler)
+
+		// Register User via OAuth
 		authGroup.POST("/register/oauth", s.AuthHandler.RegisterOAuthUser)
+
+		// Register User Anonymously
 		authGroup.POST("/register/anonymous", s.AuthHandler.RegisterAnonymousUser)
+
+		// Get User by OAuth ID
 		authGroup.POST("/get/oauth", s.AuthHandler.GetUserByOAuthID)
+
+		// Get User by Anonymous ID
 		authGroup.POST("/get/anonymous", s.AuthHandler.GetUserByAnonymousID)
+
+		// Logout
+		authGroup.POST("/logout", s.AuthHandler.LogoutHandler) // Needs implementation
+
+		// Refresh OAuth Token
+		authGroup.POST("/token/refresh", s.AuthHandler.RefreshTokenHandler) // Needs implementation
 	}
 
 	return r

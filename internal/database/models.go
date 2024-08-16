@@ -18,6 +18,16 @@ type Pastebin struct {
 	Extension string             `json:"extension"`
 }
 
+type Token struct {
+	ID             int32              `json:"id"`
+	Token          string             `json:"token"`
+	UserUuid       pgtype.UUID        `json:"user_uuid"`
+	RefreshToken   string             `json:"refresh_token"`
+	NewAccessToken string             `json:"new_access_token"`
+	IsValid        *bool              `json:"is_valid"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
 type Url struct {
 	UrlUuid uuid.UUID   `json:"url_uuid"`
 	UrlName interface{} `json:"url_name"`
