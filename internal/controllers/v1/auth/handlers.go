@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 	"triton-backend/internal/database"
 	"triton-backend/internal/merrors"
 	"triton-backend/internal/utils"
@@ -14,8 +15,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgx"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -61,13 +63,13 @@ func (a *AuthHandler) GoogleCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	token, err := a.googleOauthConfig.Exchange(context.Background(), code)
+	token, err := a.googleOauthConfig.Exchange(c, code)
 	if err != nil {
 		merrors.InternalServer(c, err.Error())
 		return
 	}
 
-	client := a.googleOauthConfig.Client(context.Background(), token)
+	client := a.googleOauthConfig.Client(c, token)
 	response, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
 	if err != nil {
 		merrors.InternalServer(c, err.Error())
@@ -81,35 +83,34 @@ func (a *AuthHandler) GoogleCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	var user map[string]interface{}
-	err = json.Unmarshal(userInfo, &user)
+	var googleUser map[string]interface{}
+	err = json.Unmarshal(userInfo, &googleUser)
 	if err != nil {
 		merrors.InternalServer(c, err.Error())
 		return
 	}
 
-	oauthID := user["id"].(string)
+	oauthID := googleUser["id"].(string)
+
+	var userUUID uuid.UUID
+
+	tx, err := a.db.Begin(c)
+	if err != nil {
+		merrors.InternalServer(c, err.Error())
+		return
+	}
+	defer tx.Rollback(c)
+	qtx := database.New(a.db).WithTx(tx)
 
 	// Check if the user exists
-	qtx := database.New(a.db)
-	userUUID, err := qtx.GetUserByOAuthID(c, database.GetUserByOAuthIDParams{
+	userUUID, err = qtx.GetUserByOAuthID(c, database.GetUserByOAuthIDParams{
 		AuthType: "oauth",
 		OauthID:  oauthID,
 	})
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		// If not, register a new user
-		userUUID = uuid.New()
-		tx, err := a.db.Begin(c)
-		if err != nil {
-			merrors.InternalServer(c, err.Error())
-			return
-		}
-		defer tx.Rollback(c)
-
-		qtx = qtx.WithTx(tx)
-		err = qtx.CreateUser(c, database.CreateUserParams{
-			Uuid:     userUUID,
+		userUUID, err = qtx.CreateUser(c, database.CreateUserParams{
 			AuthType: "oauth",
 			OauthID:  oauthID,
 		})
@@ -121,18 +122,35 @@ func (a *AuthHandler) GoogleCallbackHandler(c *gin.Context) {
 			merrors.InternalServer(c, err.Error())
 			return
 		}
+	}
 
-		err = tx.Commit(c)
-		if err != nil {
-			merrors.InternalServer(c, err.Error())
-			return
-		}
+	tok, err := generateToken(userUUID, 24*time.Hour, "authentication")
+	if err != nil {
+		merrors.InternalServer(c, "error in token generation")
+		return
+	}
+
+	err = qtx.CreateNewToken(c, database.CreateNewTokenParams{
+		Hash:     tok.Hash,
+		UserUuid: tok.UserID,
+		Expiry:   pgtype.Timestamptz{Time: tok.Expiry, Valid: true},
+		Scope:    tok.Scope,
+	})
+	if err != nil {
+		merrors.InternalServer(c, err.Error())
+		return
+	}
+
+	err = tx.Commit(c)
+	if err != nil {
+		merrors.InternalServer(c, err.Error())
+		return
 	}
 
 	c.JSON(http.StatusOK, utils.BaseResponse{
 		Success:    true,
 		Message:    "OAuth user successfully authenticated",
-		Data:       userUUID,
+		Data:       tok,
 		StatusCode: http.StatusOK,
 	})
 }
@@ -156,12 +174,8 @@ func (a *AuthHandler) RegisterOAuthUser(c *gin.Context) {
 
 	qtx := database.New(a.db).WithTx(tx)
 
-	// Create a new user UUID
-	userUUID := uuid.New()
-
 	// Try to create a new user in the database
-	err = qtx.CreateUser(c, database.CreateUserParams{
-		Uuid:     userUUID,
+	_, err = qtx.CreateUser(c, database.CreateUserParams{
 		AuthType: "oauth",
 		OauthID:  input.OAuthID,
 	})
@@ -232,8 +246,7 @@ func (a *AuthHandler) RegisterAnonymousUser(c *gin.Context) {
 	qtx := database.New(a.db).WithTx(tx)
 
 	// Try to create a new user in the database
-	err = qtx.CreateUser(c, database.CreateUserParams{
-		Uuid:     userUUID,
+	_, err = qtx.CreateUser(c, database.CreateUserParams{
 		AuthType: "anonymous",
 	})
 	var e *pgconn.PgError
@@ -289,18 +302,20 @@ func (a *AuthHandler) GetUserByAnonymousID(c *gin.Context) {
 		StatusCode: http.StatusOK,
 	})
 }
+
 func (a *AuthHandler) LogoutHandler(c *gin.Context) {
 	// Assuming you use a token-based authentication mechanism like JWT
 
 	// Invalidate the token (You might need to remove the token from a store or mark it as invalid in the DB)
-	token := c.Request.Header.Get("Authorization")
-	if token == "" {
-		merrors.Validation(c, "Authorization token required")
+	u, _ := c.Get("user")
+	user, _ := u.(*database.GetUserByTokenRow)
+	if user == AnonymousUser {
+		merrors.Unauthorized(c, "You are not logged in")
 		return
 	}
 
 	// Example: remove token from the database
-	err := a.invalidateToken(c, token)
+	err := a.invalidateToken(c, user.Uuid)
 	if err != nil {
 		merrors.InternalServer(c, "Error invalidating token")
 		return
@@ -312,18 +327,21 @@ func (a *AuthHandler) LogoutHandler(c *gin.Context) {
 		StatusCode: http.StatusOK,
 	})
 }
-func (a *AuthHandler) invalidateToken(ctx context.Context, token string) error {
+
+func (a *AuthHandler) invalidateToken(ctx context.Context, userUUID uuid.UUID) error {
 	// Create a new instance of database.Queries
 	q := database.New(a.db)
 
 	// Invalidate the token (e.g., delete it from the database)
-	err := q.DeleteTokenByToken(ctx, token)
+	err := q.DeleteTokenForUser(ctx, userUUID)
 	if err != nil {
 		return err
 	}
 
 	return nil
 }
+
+/*
 
 func (a *AuthHandler) RefreshTokenHandler(c *gin.Context) {
 	var input struct {
@@ -362,3 +380,5 @@ func (a *AuthHandler) refreshAccessToken(ctx context.Context, refreshToken strin
 
 	return newToken, nil
 }
+
+*/

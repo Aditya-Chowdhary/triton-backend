@@ -18,6 +18,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.GET("/health", s.healthHandler)
 
 	v1 := r.Group("/v1")
+	v1.Use(s.authenticate())
 	v1.POST("/pastebin/create", s.PastebinHandler.CreatePastebin)
 	v1.GET("/pastebin/:url", s.PastebinHandler.GetPastebin)
 
@@ -45,7 +46,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 		authGroup.POST("/logout", s.AuthHandler.LogoutHandler) // Needs implementation
 
 		// Refresh OAuth Token
-		authGroup.POST("/token/refresh", s.AuthHandler.RefreshTokenHandler) // Needs implementation
+		// authGroup.POST("/token/refresh", s.AuthHandler.RefreshTokenHandler) // Needs implementation
 	}
 
 	return r
@@ -77,20 +78,4 @@ func (s *Server) healthHandler(c *gin.Context) {
 	stats["status"] = "up"
 	stats["message"] = "It's healthy"
 	c.JSON(http.StatusOK, stats)
-}
-
-func CORSMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-
-		c.Next()
-	}
 }
